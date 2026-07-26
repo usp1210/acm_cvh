@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hierarchical Win Ratio Calculator</title>
+<style>
+  :root {
+    --bg:       #0e1624;
+    --surface:  #162035;
+    --card:     #1c2a42;
+    --border:   #263550;
+    --accent:   #3b82f6;
+    --accent2:  #06b6d4;
+    --win:      #22c55e;
+    --loss:     #ef4444;
+    --tie:      #94a3b8;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --label:    #93c5fd;
+    --font:     'Inter', system-ui, sans-serif;
+    --mono:     'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+
+  /* ---- HEADER ---- */
+  header {
+    background: linear-gradient(135deg, #0f2044 0%, #162a55 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 22px 32px 18px;
+    display: flex; align-items: flex-end; gap: 18px;
+  }
+  header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; color: #fff; }
+  header p  { font-size: 12px; color: var(--muted); margin-top: 3px; max-width: 520px; line-height: 1.5; }
+  .badge {
+    font-size: 10px; font-family: var(--mono); background: #1e3a6e;
+    color: var(--accent2); border: 1px solid #2d5090; border-radius: 4px;
+    padding: 2px 8px; white-space: nowrap; margin-left: auto;
+  }
+
+  /* ---- LAYOUT ---- */
+  .main { display: grid; grid-template-columns: 320px 1fr; gap: 0; min-height: calc(100vh - 80px); }
+
+  /* ---- SIDEBAR ---- */
+  aside {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 24px 20px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  .section-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 10px;
+  }
+  .input-group { display: flex; flex-direction: column; gap: 12px; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label {
+    font-size: 11px; color: var(--label); font-weight: 500; letter-spacing: 0.3px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .field label span { font-family: var(--mono); font-size: 12px; color: #fff; font-weight: 700; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px; border-radius: 2px;
+    background: var(--border); outline: none; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); border: 2px solid #fff;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.25); cursor: pointer;
+  }
+
+  .divider { border: none; border-top: 1px solid var(--border); }
+
+  .run-btn {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff; border: none; border-radius: 8px; padding: 12px;
+    font-size: 13px; font-weight: 600; cursor: pointer; letter-spacing: 0.3px;
+    width: 100%; transition: opacity 0.15s;
+  }
+  .run-btn:hover { opacity: 0.88; }
+  .run-btn:active { opacity: 0.75; }
+  .run-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .note {
+    font-size: 10px; color: var(--muted); line-height: 1.6;
+    background: var(--card); border-radius: 6px; padding: 10px 12px;
+    border-left: 2px solid var(--accent);
+  }
+
+  /* ---- MAIN CONTENT ---- */
+  .content { padding: 28px 32px; display: flex; flex-direction: column; gap: 28px; }
+
+  .status-bar {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px; color: var(--muted);
+  }
+  .spinner {
+    width: 14px; height: 14px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.7s linear infinite; display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- RESULTS GRID ---- */
+  .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  .result-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+  }
+  .card-header {
+    padding: 12px 16px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .card-title { font-size: 12px; font-weight: 600; color: var(--text); }
+  .card-sub   { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+
+  .card-body  { padding: 16px; }
+
+  /* Bar rows */
+  .bar-row { margin-bottom: 14px; }
+  .bar-row:last-child { margin-bottom: 0; }
+  .bar-meta { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .bar-label { font-size: 11px; color: var(--muted); }
+  .bar-val   { font-size: 12px; font-family: var(--mono); font-weight: 700; }
+  .bar-val.win  { color: var(--win); }
+  .bar-val.loss { color: var(--loss); }
+  .bar-val.tie  { color: var(--tie); }
+
+  .bar-track { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .bar-fill  { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+  .bar-fill.win  { background: linear-gradient(90deg, #16a34a, #22c55e); }
+  .bar-fill.loss { background: linear-gradient(90deg, #b91c1c, #ef4444); }
+  .bar-fill.tie  { background: linear-gradient(90deg, #475569, #94a3b8); }
+
+  /* WR badge */
+  .wr-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 14px; margin-top: 12px;
+  }
+  .wr-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .wr-val   { font-size: 20px; font-family: var(--mono); font-weight: 700; }
+  .wr-val.favorable { color: var(--win); }
+  .wr-val.neutral   { color: var(--tie); }
+  .wr-val.harmful   { color: var(--loss); }
+
+  /* ---- SUMMARY TABLE ---- */
+  .summary-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  }
+  .summary-header {
+    padding: 12px 16px; background: var(--surface);
+    border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th {
+    padding: 9px 14px; text-align: left; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px; color: var(--muted);
+    border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr.total-row td { background: rgba(59,130,246,0.07); font-weight: 600; }
+  .mono { font-family: var(--mono); }
+
+  /* ---- STACKED BAR ---- */
+  .stacked-wrap { padding: 16px; }
+  .stacked-label { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .stacked-bar {
+    display: flex; height: 24px; border-radius: 6px; overflow: hidden; gap: 1px;
+  }
+  .stacked-seg { height: 100%; transition: width 0.5s ease; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: rgba(255,255,255,0.85); }
+
+  /* ---- ASSUMPTIONS RECAP ---- */
+  .assumptions {
+    display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 16px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    font-size: 11px;
+  }
+  .assumption-chip {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 5px; padding: 4px 10px; color: var(--muted);
+  }
+  .assumption-chip strong { color: var(--text); font-family: var(--mono); }
+
+  .placeholder {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 260px; color: var(--muted); gap: 10px; text-align: center;
+  }
+  .placeholder-icon { font-size: 40px; opacity: 0.3; }
+  .placeholder p { font-size: 13px; }
+
+  .power-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  }
+  .power-header {
+    padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .power-body { padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .z-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .z-table th {
+    padding: 6px 10px; text-align: left; font-size: 9px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px; color: var(--muted);
+    border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  .z-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 11px; }
+  .z-table tr:last-child td { border-bottom: none; }
+  .power-stat { display: flex; flex-direction: column; gap: 12px; }
+  .power-num { font-size: 36px; font-family: var(--mono); font-weight: 700; }
+  .power-num.high   { color: var(--win); }
+  .power-num.medium { color: #facc15; }
+  .power-num.low    { color: var(--loss); }
+  .power-sub { font-size: 10px; color: var(--muted); }
+  .ncp-row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .ncp-item { display: flex; flex-direction: column; gap: 2px; }
+  .ncp-val  { font-size: 16px; font-family: var(--mono); font-weight: 600; color: var(--accent2); }
+  .ncp-lbl  { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+  .zdist-bar-wrap { margin-top: 8px; }
+  .zdist-label { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+  .zdist-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  .zdist-lbl { font-size: 9px; color: var(--muted); width: 52px; }
+  .zdist-track { flex: 1; height: 12px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .zdist-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+
+  @media (max-width: 800px) {
+    .main { grid-template-columns: 1fr; }
+    .results-grid { grid-template-columns: 1fr; }
+    .power-body { grid-template-columns: 1fr; }
+    aside { border-right: none; border-bottom: 1px solid var(--border); }
+    header { flex-wrap: wrap; }
+    .badge { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Hierarchical Win Ratio Calculator</h1>
+    <p>Simulate pairwise comparisons across a two-level hierarchy: all-cause mortality (ACM) first, then cardiovascular hospitalisation (CVH).</p>
+  </div>
+  <div class="badge">Monte Carlo · n² pairs · Weibull ACM · NB CVH · Gaussian copula</div>
+</header>
+
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <aside>
+    <div>
+      <div class="section-label">Study Design</div>
+      <div class="input-group">
+
+        <div class="field">
+          <label>Follow-up (months) <span id="val-fu">30</span></label>
+          <input type="range" id="sl-fu" min="6" max="60" step="1" value="30" oninput="sync('fu')">
+        </div>
+
+        <div class="field">
+          <label>N per arm <span id="val-n">300</span></label>
+          <input type="range" id="sl-n" min="50" max="1000" step="50" value="300" oninput="sync('n')">
+        </div>
+
+        <div class="field">
+          <label>Randomisation ratio (trt : ctrl) <span id="val-ratio">1:1</span></label>
+          <input type="range" id="sl-ratio" min="0.25" max="3" step="0.25" value="1" oninput="sync('ratio')">
+        </div>
+
+        <div class="field">
+          <label>Lost to follow-up — control (% over study) <span id="val-ltfuc">5.0</span></label>
+          <input type="range" id="sl-ltfuc" min="0" max="50" step="1" value="5" oninput="sync('ltfuc')">
+        </div>
+
+        <div class="field">
+          <label>Lost to follow-up — treatment (% over study) <span id="val-ltfut">5.0</span></label>
+          <input type="range" id="sl-ltfut" min="0" max="50" step="1" value="5" oninput="sync('ltfut')">
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div>
+      <div class="section-label">Placebo Assumptions</div>
+      <div class="input-group">
+
+        <div class="field">
+          <label>ACM event rate, placebo (%) <span id="val-acm">25</span></label>
+          <input type="range" id="sl-acm" min="1" max="60" step="1" value="25" oninput="sync('acm')">
+        </div>
+
+        <div class="field">
+          <label>CVH rate, placebo (/year) <span id="val-cvh">0.30</span></label>
+          <input type="range" id="sl-cvh" min="0.05" max="1.50" step="0.05" value="0.30" oninput="sync('cvh')">
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div>
+      <div class="section-label">Treatment Effect</div>
+      <div class="input-group">
+
+        <div class="field">
+          <label>HR for ACM <span id="val-hr">0.77</span></label>
+          <input type="range" id="sl-hr" min="0.40" max="1.30" step="0.01" value="0.77" oninput="sync('hr')">
+        </div>
+
+        <div class="field">
+          <label>RR for CVH <span id="val-rr">0.50</span></label>
+          <input type="range" id="sl-rr" min="0.20" max="1.20" step="0.01" value="0.50" oninput="sync('rr')">
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div>
+      <div class="section-label">Model Parameters</div>
+      <div class="input-group">
+
+        <div class="field">
+          <label>Weibull shape ν (ACM) <span id="val-shape">1.50</span></label>
+          <input type="range" id="sl-shape" min="0.50" max="3.00" step="0.05" value="1.50" oninput="sync('shape')">
+        </div>
+
+        <div class="field">
+          <label>NB overdispersion κ (CVH) <span id="val-kappa">1.50</span></label>
+          <input type="range" id="sl-kappa" min="0.10" max="5.00" step="0.10" value="1.50" oninput="sync('kappa')">
+        </div>
+
+        <div class="field">
+          <label>Copula correlation ρ (ACM–CVH) <span id="val-rho">0.50</span></label>
+          <input type="range" id="sl-rho" min="-0.90" max="0.90" step="0.05" value="0.50" oninput="sync('rho')">
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="note">
+      ACM: Weibull (shape=ν). CVH: NB first-event (Gamma-Poisson, κ), correlated with ACM via Gaussian copula (ρ). Variance of CVH count = mean + mean²·κ. 150 replicates of n² pairs.
+    </div>
+
+    <button class="run-btn" id="runBtn" onclick="runSim()">▶ Run Simulation</button>
+  </aside>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <div class="status-bar">
+      <div class="spinner" id="spinner"></div>
+      <span id="status-msg">Adjust assumptions and click Run Simulation.</span>
+    </div>
+
+    <div id="assumptions-wrap" style="display:none">
+      <div class="assumptions" id="assumptions-chips"></div>
+    </div>
+
+    <div id="placeholder" class="placeholder">
+      <div class="placeholder-icon">⚖️</div>
+      <p>Results will appear here after running the simulation.</p>
+    </div>
+
+    <div id="results" style="display:none">
+
+      <div class="results-grid">
+
+        <!-- DEATH CARD -->
+        <div class="result-card">
+          <div class="card-header">
+            <span class="card-title">Level 1 — All-Cause Mortality</span>
+            <span class="card-sub" id="d-cens">–</span>
+          </div>
+          <div class="card-body">
+            <div class="bar-row">
+              <div class="bar-meta"><span class="bar-label">Wins (trt survives longer)</span><span class="bar-val win" id="d-win">–</span></div>
+              <div class="bar-track"><div class="bar-fill win" id="d-win-bar" style="width:0%"></div></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-meta"><span class="bar-label">Losses</span><span class="bar-val loss" id="d-loss">–</span></div>
+              <div class="bar-track"><div class="bar-fill loss" id="d-loss-bar" style="width:0%"></div></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-meta"><span class="bar-label">Ties → escalated to CVH</span><span class="bar-val tie" id="d-tie">–</span></div>
+              <div class="bar-track"><div class="bar-fill tie" id="d-tie-bar" style="width:0%"></div></div>
+            </div>
+            <div class="wr-badge">
+              <span class="wr-label">WR</span>
+              <span class="wr-val" id="d-wr">–</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- CVH CARD -->
+        <div class="result-card">
+          <div class="card-header">
+            <span class="card-title">Level 2 — CVH (among death ties)</span>
+            <span class="card-sub" id="h-rates">–</span>
+          </div>
+          <div class="card-body">
+            <div class="bar-row">
+              <div class="bar-meta"><span class="bar-label">Wins (% of all pairs)</span><span class="bar-val win" id="h-win">–</span></div>
+              <div class="bar-track"><div class="bar-fill win" id="h-win-bar" style="width:0%"></div></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-meta"><span class="bar-label">Losses (% of all pairs)</span><span class="bar-val loss" id="h-loss">–</span></div>
+              <div class="bar-track"><div class="bar-fill loss" id="h-loss-bar" style="width:0%"></div></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-meta"><span class="bar-label">Final ties (unresolved)</span><span class="bar-val tie" id="h-tie">–</span></div>
+              <div class="bar-track"><div class="bar-fill tie" id="h-tie-bar" style="width:0%"></div></div>
+            </div>
+            <div class="wr-badge">
+              <span class="wr-label">CVH-level WR</span>
+              <span class="wr-val" id="h-wr">–</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- SUMMARY TABLE -->
+      <div class="summary-card">
+        <div class="summary-header">Overall Hierarchical Win Ratio</div>
+
+        <!-- stacked bar -->
+        <div class="stacked-wrap">
+          <div class="stacked-label">Composition of all n² pairs</div>
+          <div class="stacked-bar" id="stacked-bar"></div>
+          <div style="display:flex;gap:16px;margin-top:8px;font-size:10px;color:var(--muted)">
+            <span><span style="color:var(--win)">■</span> Death win</span>
+            <span><span style="color:#16a34a99">■</span> CVH win</span>
+            <span><span style="color:var(--loss)">■</span> Death loss</span>
+            <span><span style="color:#b91c1c99">■</span> CVH loss</span>
+            <span><span style="color:var(--tie)">■</span> Final tie</span>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Level</th>
+              <th>Wins %</th>
+              <th>Losses %</th>
+              <th>Ties %</th>
+              <th>Win Ratio</th>
+            </tr>
+          </thead>
+          <tbody id="summary-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- POWER CARD -->
+      <div class="power-card" id="power-card" style="display:none">
+        <div class="power-header">
+          <span class="card-title">Finkelstein-Schoenfeld Statistic &amp; Study Power</span>
+          <span class="card-sub" id="fs-subtitle">α=0.05 two-sided</span>
+        </div>
+        <div class="power-body">
+
+          <div class="power-stat">
+            <div>
+              <div class="power-sub">Empirical power (|Z| &gt; 1.96)</div>
+              <div class="power-num" id="fs-power">—</div>
+              <div class="power-sub" style="margin-top:4px">Analytical power (V = W+L)</div>
+              <div style="font-size:20px;font-family:var(--mono);font-weight:600;color:var(--accent2);margin-top:2px" id="fs-power-an">—</div>
+            </div>
+            <div class="ncp-row">
+              <div class="ncp-item"><span class="ncp-val" id="fs-ncp">—</span><span class="ncp-lbl">Non-centrality λ</span></div>
+              <div class="ncp-item"><span class="ncp-val" id="fs-meanz">—</span><span class="ncp-lbl">Mean Z (alt)</span></div>
+              <div class="ncp-item"><span class="ncp-val" id="fs-sdnull">—</span><span class="ncp-lbl">SD(U) null</span></div>
+              <div class="ncp-item"><span class="ncp-val" id="fs-meanu">—</span><span class="ncp-lbl">Mean U (W-L)</span></div>
+            </div>
+            <div class="zdist-bar-wrap">
+              <div class="zdist-label">Z distribution (alt) — percentile bars</div>
+              <div class="zdist-row"><span class="zdist-lbl">P2.5</span><div class="zdist-track"><div class="zdist-fill" id="zbar-p25" style="background:#3b82f6;width:0%"></div></div><span id="zbar-p25-val" style="font-size:9px;color:var(--muted);width:36px"></span></div>
+              <div class="zdist-row"><span class="zdist-lbl">Median</span><div class="zdist-track"><div class="zdist-fill" id="zbar-med" style="background:#06b6d4;width:0%"></div></div><span id="zbar-med-val" style="font-size:9px;color:var(--muted);width:36px"></span></div>
+              <div class="zdist-row"><span class="zdist-lbl">P97.5</span><div class="zdist-track"><div class="zdist-fill" id="zbar-p975" style="background:#22c55e;width:0%"></div></div><span id="zbar-p975-val" style="font-size:9px;color:var(--muted);width:36px"></span></div>
+              <div class="zdist-row"><span class="zdist-lbl">Mean</span><div class="zdist-track"><div class="zdist-fill" id="zbar-mean" style="background:#f59e0b;width:0%"></div></div><span id="zbar-mean-val" style="font-size:9px;color:var(--muted);width:36px"></span></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="zdist-label" style="margin-bottom:8px">Z score table (empirical null variance)</div>
+            <table class="z-table" id="z-table">
+              <thead><tr><th>Estimator</th><th>Mean Z</th><th>Median Z</th><th>SD Z</th><th>P2.5</th><th>P97.5</th><th>Power %</th></tr></thead>
+              <tbody id="z-tbody"></tbody>
+            </table>
+            <div style="margin-top:12px;font-size:10px;color:var(--muted);line-height:1.6">
+              U = W − L (net wins). Z<sub>analytic</sub> = U/√(W+L). Z<sub>empirical</sub> = U/SD(U<sub>null</sub>).<br>
+              Null variance estimated from 100 null replicates (HR=RR=1). Power = P(|Z|&gt;1.96).
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /results -->
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<script>
+// ---- Sync sliders ----
+const FMT = {
+  fu:    v => v,
+  n:     v => v,
+  acm:   v => v,
+  cvh:   v => parseFloat(v).toFixed(2),
+  hr:    v => parseFloat(v).toFixed(2),
+  rr:    v => parseFloat(v).toFixed(2),
+  shape: v => parseFloat(v).toFixed(2),
+  kappa: v => parseFloat(v).toFixed(2),
+  rho:   v => parseFloat(v).toFixed(2),
+  ratio: v => { const r=parseFloat(v); return r>=1 ? r.toFixed(2)+':1' : '1:'+( 1/r).toFixed(2); },
+  ltfuc: v => parseFloat(v).toFixed(1),
+  ltfut: v => parseFloat(v).toFixed(1),
+};
+function sync(key) {
+  const v = document.getElementById('sl-' + key).value;
+  document.getElementById('val-' + key).textContent = FMT[key](v);
+}
+
+// ---- RNG helpers ----
+// Weibull via inverse CDF: scale * (-ln(U))^(1/shape)
+function rWeibull(shape, scale) {
+  return scale * Math.pow(-Math.log(Math.random()), 1 / shape);
+}
+function rExp(rate) {
+  return -Math.log(Math.random()) / rate;
+}
+
+// ---- Core simulation ----
+function runOnce(params) {
+  const { fu, nC, nT, acmRate, cvhRate, hr, rr, shape, kappa, rho, ltfuc, ltfut } = params;
+
+  // Back-calculate Weibull scale so P(event <= fu) = acmRate
+  const scaleCtrl = fu / Math.pow(-Math.log(1 - acmRate), 1 / shape);
+  const scaleTrt  = scaleCtrl * Math.pow(hr, -1 / shape);
+
+  const lambdaCtrl = cvhRate / 12;   // per month
+  const lambdaTrt  = lambdaCtrl * rr;
+
+  // ----------------------------------------------------------------
+  // Correlated patient generation via Gaussian copula (rho = 0.5)
+  //   U_death and U_cvh are correlated Uniform(0,1) via bivariate
+  //   standard normal with correlation rho.
+  //   ACM  <- Weibull^{-1}(U_death)
+  //   CVH  <- NB first-event^{-1}(U_cvh)  [Gamma-Poisson frailty]
+  //
+  // Negative-binomial first-event time:
+  //   NB parameterisation: mean = lambda, variance = lambda + lambda^2 * kappa
+  //   Gamma frailty: theta ~ Gamma(shape=1/kappa, rate=1/(lambda*kappa))
+  //     => E[theta] = lambda,  Var[theta] = lambda^2 * kappa
+  //   First-event time T|theta ~ Exp(theta)
+  //   Marginalising theta: T ~ Lomax with
+  //     CDF: F(t)  = 1 - (1 + lambda*kappa*t)^{-1/kappa}
+  //     Inverse:   t = (1/(lambda*kappa)) * ((1-u)^{-kappa} - 1)
+  // ----------------------------------------------------------------
+  const RHO   = rho;    // from slider (Gaussian copula ACM-CVH correlation)
+  const KAPPA = kappa;  // from slider (NB overdispersion: Var = mean + mean^2 * kappa)
+
+  // Box-Muller for two independent standard normals
+  function rNorm2() {
+    const u1 = Math.random(), u2 = Math.random();
+    const r  = Math.sqrt(-2 * Math.log(u1));
+    return [r * Math.cos(2 * Math.PI * u2), r * Math.sin(2 * Math.PI * u2)];
+  }
+  // Standard normal CDF (Abramowitz & Stegun approximation)
+  function normCDF(x) {
+    const t = 1 / (1 + 0.2316419 * Math.abs(x));
+    const p = t*(0.319381530 + t*(-0.356563782 + t*(1.781477937 + t*(-1.821255978 + t*1.330274429))));
+    const phi = Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+    return x >= 0 ? 1 - phi * p : phi * p;
+  }
+  // Lomax (NB first-event) inverse CDF
+  // Var = lambda + lambda^2 * kappa  =>  t = (1/(lambda*kappa)) * ((1-u)^{-kappa} - 1)
+  function rLomaxInvCDF(u, lambda, kappa) {
+    return (1 / (lambda * kappa)) * (Math.pow(1 - u, -kappa) - 1);
+  }
+
+  const dcObs = new Float64Array(nC), dcEv = new Uint8Array(nC);
+  const dtObs = new Float64Array(nT), dtEv = new Uint8Array(nT);
+  const hcObs = new Float64Array(nC), hcEv = new Uint8Array(nC);
+  const htObs = new Float64Array(nT), htEv = new Uint8Array(nT);
+
+  let cvhCtrlCount = 0, cvhTrtCount = 0;
+
+  // LTFU: each patient has probability ltfuc/ltfut of being lost over the study.
+  // Modelled as: draw U~Uniform(0,1); if U < ltfuFrac, dropout time = U*(fu/ltfuFrac),
+  // giving exactly ltfuFrac% lost uniformly spread across [0, fu].
+  let ltfuCtrlCount = 0, ltfuTrtCount = 0;
+
+  // Generate CONTROL arm
+  for (let i = 0; i < nC; i++) {
+    const [z1c, z2c] = rNorm2();
+    const zCvhC   = RHO * z1c + Math.sqrt(1 - RHO * RHO) * z2c;
+    const uDeathC = normCDF(z1c);
+    const uCvhC   = normCDF(zCvhC);
+    // LTFU: uniform dropout. If U < ltfuc, patient drops at time U*(fu/ltfuc)
+    const uL = Math.random();
+    const tLtfuC = uL < ltfuc ? (uL / ltfuc) * fu : Infinity;
+    const censC  = Math.min(fu, tLtfuC);
+    const tdc    = scaleCtrl * Math.pow(-Math.log(1 - uDeathC), 1 / shape);
+    dcObs[i] = Math.min(tdc, censC); dcEv[i] = tdc <= censC ? 1 : 0;
+    if (tLtfuC < fu && tdc > tLtfuC) ltfuCtrlCount++;
+    const thc = rLomaxInvCDF(uCvhC, lambdaCtrl, KAPPA);
+    hcObs[i] = Math.min(thc, dcObs[i]); hcEv[i] = thc <= dcObs[i] ? 1 : 0;
+    cvhCtrlCount += hcEv[i];
+  }
+
+  // Generate TREATMENT arm
+  for (let i = 0; i < nT; i++) {
+    const [z1t, z2t] = rNorm2();
+    const zCvhT   = RHO * z1t + Math.sqrt(1 - RHO * RHO) * z2t;
+    const uDeathT = normCDF(z1t);
+    const uCvhT   = normCDF(zCvhT);
+    const uL = Math.random();
+    const tLtfuT = uL < ltfut ? (uL / ltfut) * fu : Infinity;
+    const censT  = Math.min(fu, tLtfuT);
+    const tdt    = scaleTrt * Math.pow(-Math.log(1 - uDeathT), 1 / shape);
+    dtObs[i] = Math.min(tdt, censT); dtEv[i] = tdt <= censT ? 1 : 0;
+    if (tLtfuT < fu && tdt > tLtfuT) ltfuTrtCount++;
+    const tht = rLomaxInvCDF(uCvhT, lambdaTrt, KAPPA);
+    htObs[i] = Math.min(tht, dtObs[i]); htEv[i] = tht <= dtObs[i] ? 1 : 0;
+    cvhTrtCount += htEv[i];
+  }
+
+  // Pairwise (nT treatment × nC control pairs)
+  let wd=0,ld=0, wh=0,lh=0, tf=0;
+
+  for (let i = 0; i < nT; i++) {
+    for (let j = 0; j < nC; j++) {
+      // Level 1: death
+      if (dcEv[j] === 1 && dtObs[i] > dcObs[j]) { wd++; }
+      else if (dtEv[i] === 1 && dcObs[j] > dtObs[i]) { ld++; }
+      else {
+        // Level 2: CVH
+        if (hcEv[j] === 1 && htObs[i] > hcObs[j]) { wh++; }
+        else if (htEv[i] === 1 && hcObs[j] > htObs[i]) { lh++; }
+        else { tf++; }
+      }
+    }
+  }
+
+  const tot = nT * nC;
+  return { wd, ld, wh, lh, tf, tot,
+           cvhCtrl: cvhCtrlCount / nC, cvhTrt: cvhTrtCount / nT,
+           deathCtrl: dcEv.reduce((a,b)=>a+b,0)/nC,
+           deathTrt:  dtEv.reduce((a,b)=>a+b,0)/nT,
+           ltfuCtrl: ltfuCtrlCount/nC, ltfuTrt: ltfuTrtCount/nT };
+}
+
+// ---- Run multiple replicates in chunks (non-blocking) ----
+function runSim() {
+  const fu    = parseFloat(document.getElementById('sl-fu').value);
+  const n     = parseInt(document.getElementById('sl-n').value);
+  const acm   = parseFloat(document.getElementById('sl-acm').value) / 100;
+  const cvh   = parseFloat(document.getElementById('sl-cvh').value);
+  const hr    = parseFloat(document.getElementById('sl-hr').value);
+  const rr    = parseFloat(document.getElementById('sl-rr').value);
+  const shape = parseFloat(document.getElementById('sl-shape').value);
+  const kappa = parseFloat(document.getElementById('sl-kappa').value);
+  const rho   = parseFloat(document.getElementById('sl-rho').value);
+  const ratio = parseFloat(document.getElementById('sl-ratio').value); // trt:ctrl
+  const ltfuc = parseFloat(document.getElementById('sl-ltfuc').value) / 100; // total % over study
+  const ltfut = parseFloat(document.getElementById('sl-ltfut').value) / 100;
+  // Derive arm sizes from N per arm (reference = control) and ratio
+  const nC   = n;                          // control arm size
+  const nT   = Math.round(n * ratio);      // treatment arm size
+  const N_SIM = 150;
+  const CHUNK = 15;
+
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('spinner').style.display = 'block';
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('status-msg').textContent = 'Simulating…';
+
+  const acc = { wd:0, ld:0, wh:0, lh:0, tf:0, tot:0,
+                cvhC:0, cvhT:0, dC:0, dT:0, ltfuC:0, ltfuT:0 };
+  const repData = [];   // per-replicate storage for F-S statistic
+  let done = 0;
+
+  const params = { fu, nC, nT, ratio, acmRate: acm, cvhRate: cvh, hr, rr, shape, kappa, rho, ltfuc, ltfut };
+
+  function runChunk() {
+    const end = Math.min(done + CHUNK, N_SIM);
+    for (let s = done; s < end; s++) {
+      const r = runOnce(params);
+      acc.wd  += r.wd;  acc.ld  += r.ld;
+      acc.wh  += r.wh;  acc.lh  += r.lh;
+      acc.tf  += r.tf;  acc.tot += r.tot;
+      acc.cvhC += r.cvhCtrl; acc.cvhT += r.cvhTrt;
+      acc.dC   += r.deathCtrl; acc.dT  += r.deathTrt;
+      acc.ltfuC += r.ltfuCtrl; acc.ltfuT += r.ltfuTrt;
+      repData.push({ wd:r.wd, ld:r.ld, wh:r.wh, lh:r.lh });
+    }
+    done = end;
+    document.getElementById('status-msg').textContent =
+      `Simulating… ${done}/${N_SIM} replicates`;
+
+    if (done < N_SIM) { setTimeout(runChunk, 0); }
+    else { showResults(acc, N_SIM, params); showPower(repData, N_SIM, params); }
+  }
+  setTimeout(runChunk, 0);
+}
+
+function pct(num, tot) { return (100 * num / tot).toFixed(1) + '%'; }
+function pctNum(num, tot) { return parseFloat((100 * num / tot).toFixed(1)); }
+function wr(w, l) { return l > 0 ? (w / l).toFixed(3) : '–'; }
+function wrClass(v) {
+  const n = parseFloat(v);
+  return isNaN(n) ? '' : n > 1.05 ? 'favorable' : n < 0.95 ? 'harmful' : 'neutral';
+}
+
+function setBar(id, pct) {
+  document.getElementById(id).style.width = Math.min(pct, 100) + '%';
+}
+
+function showResults(acc, nSim, p) {
+  const tot = acc.tot;
+
+  // Averages
+  const wdP  = pctNum(acc.wd, tot), ldP  = pctNum(acc.ld, tot);
+  const whP  = pctNum(acc.wh, tot), lhP  = pctNum(acc.lh, tot);
+  const tfP  = pctNum(acc.tf, tot);
+  const tdP  = pctNum(acc.tf + acc.wh + acc.lh, tot); // escalated to CVH
+  const wTot = pctNum(acc.wd + acc.wh, tot);
+  const lTot = pctNum(acc.ld + acc.lh, tot);
+
+  const dWR = wr(acc.wd, acc.ld);
+  const hWR = wr(acc.wh, acc.lh);
+  const oWR = wr(acc.wd + acc.wh, acc.ld + acc.lh);
+
+  const cvhCtrl = (100 * acc.cvhC / nSim).toFixed(1);
+  const cvhTrt  = (100 * acc.cvhT / nSim).toFixed(1);
+  const dCtrl   = (100 * acc.dC   / nSim).toFixed(1);
+  const dTrt    = (100 * acc.dT   / nSim).toFixed(1);
+
+  // Death card
+  const ltfuCtrl = (100 * acc.ltfuC / nSim).toFixed(1);
+  const ltfuTrt  = (100 * acc.ltfuT / nSim).toFixed(1);
+  document.getElementById('d-cens').textContent =
+    `Obs ACM: placebo ${dCtrl}% / trt ${dTrt}% | LTFU: ctrl ${ltfuCtrl}% / trt ${ltfuTrt}%`;
+  document.getElementById('d-win').textContent  = wdP + '%';
+  document.getElementById('d-loss').textContent = ldP + '%';
+  document.getElementById('d-tie').textContent  = tdP + '%';
+  setBar('d-win-bar',  wdP); setBar('d-loss-bar', ldP); setBar('d-tie-bar', tdP);
+  const dwrEl = document.getElementById('d-wr');
+  dwrEl.textContent = dWR; dwrEl.className = 'wr-val ' + wrClass(dWR);
+
+  // CVH card
+  document.getElementById('h-rates').textContent =
+    `Obs CVH: placebo ${cvhCtrl}% / trt ${cvhTrt}%`;
+  document.getElementById('h-win').textContent  = whP + '%';
+  document.getElementById('h-loss').textContent = lhP + '%';
+  document.getElementById('h-tie').textContent  = tfP + '%';
+  setBar('h-win-bar', whP); setBar('h-loss-bar', lhP); setBar('h-tie-bar', tfP);
+  const hwrEl = document.getElementById('h-wr');
+  hwrEl.textContent = hWR; hwrEl.className = 'wr-val ' + wrClass(hWR);
+
+  // Stacked bar
+  const segs = [
+    { pct: wdP,  bg: '#22c55e',   label: wdP+'%' },
+    { pct: whP,  bg: '#16a34a99', label: whP+'%' },
+    { pct: ldP,  bg: '#ef4444',   label: ldP+'%' },
+    { pct: lhP,  bg: '#b91c1c99', label: lhP+'%' },
+    { pct: tfP,  bg: '#475569',   label: tfP+'%' },
+  ];
+  document.getElementById('stacked-bar').innerHTML = segs.map(s =>
+    `<div class="stacked-seg" style="width:${s.pct}%;background:${s.bg}">
+       ${s.pct > 5 ? s.label : ''}
+     </div>`
+  ).join('');
+
+  // Summary table
+  const rows = [
+    { level:'1. All-Cause Mortality', w: wdP, l: ldP, t: tdP,  wrv: dWR },
+    { level:'2. CVH (among ties)',    w: whP, l: lhP, t: tfP,  wrv: hWR },
+    { level:'Overall (hierarchical)', w: wTot, l: lTot, t: tfP, wrv: oWR, total: true },
+  ];
+  document.getElementById('summary-tbody').innerHTML = rows.map(r => `
+    <tr class="${r.total ? 'total-row' : ''}">
+      <td>${r.level}</td>
+      <td class="mono" style="color:var(--win)">${r.w}%</td>
+      <td class="mono" style="color:var(--loss)">${r.l}%</td>
+      <td class="mono" style="color:var(--tie)">${r.t}%</td>
+      <td class="mono ${wrClass(r.wrv) === 'favorable' ? '' : ''}"
+          style="color:${parseFloat(r.wrv)>1?'var(--win)':parseFloat(r.wrv)<1?'var(--loss)':'var(--tie)'}">
+        ${r.wrv}
+      </td>
+    </tr>`).join('');
+
+  // Assumptions recap
+  const chips = [
+    `Follow-up <strong>${p.fu} mo</strong>`,
+    `N ctrl <strong>${p.nC}</strong>`,
+    `N trt <strong>${p.nT}</strong>`,
+    `Ratio <strong>${FMT.ratio(p.ratio)}</strong>`,
+    `Placebo ACM <strong>${(p.acmRate*100).toFixed(0)}%</strong>`,
+    `Placebo CVH <strong>${p.cvhRate}/yr</strong>`,
+    `HR (ACM) <strong>${p.hr}</strong>`,
+    `RR (CVH) <strong>${p.rr}</strong>`,
+    `Weibull ν <strong>${p.shape.toFixed(2)}</strong>`,
+    `NB κ <strong>${p.kappa.toFixed(2)}</strong>`,
+    `Copula ρ <strong>${p.rho.toFixed(2)}</strong>`,
+    `LTFU ctrl <strong>${(p.ltfuc*100).toFixed(0)}%</strong>`,
+    `LTFU trt <strong>${(p.ltfut*100).toFixed(0)}%</strong>`,
+    `Replicates <strong>150</strong>`,
+  ];
+  document.getElementById('assumptions-chips').innerHTML =
+    chips.map(c => `<div class="assumption-chip">${c}</div>`).join('');
+
+  document.getElementById('assumptions-wrap').style.display = 'block';
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('spinner').style.display = 'none';
+  document.getElementById('runBtn').disabled = false;
+  document.getElementById('status-msg').textContent =
+    `Done — ${nSim} replicates × ${p.nT}×${p.nC} = ${(nSim*p.nT*p.nC).toLocaleString()} pairs`;
+}
+
+// ---- NULL SIMULATION for F-S variance ─────────────────────────────────────
+function runNull(params, cb) {
+  const N_NULL = 100, CHUNK = 20;
+  const nullParams = { ...params, hr: 1.0, rr: 1.0 };
+  const U_null = [];
+  let done = 0;
+  function chunk() {
+    const end = Math.min(done + CHUNK, N_NULL);
+    for (let s = done; s < end; s++) {
+      const r = runOnce(nullParams);
+      U_null.push((r.wd + r.wh) - (r.ld + r.lh));
+    }
+    done = end;
+    if (done < N_NULL) setTimeout(chunk, 0);
+    else cb(U_null);
+  }
+  setTimeout(chunk, 0);
+}
+
+// ---- POWER & Z-SCORE DISPLAY ───────────────────────────────────────────────
+function showPower(acc_rep, nSim, params) {
+  // acc_rep: array of per-replicate {wd,ld,wh,lh} objects
+  document.getElementById('status-msg').textContent = 'Running null simulations for F-S variance…';
+
+  runNull(params, function(U_null) {
+    const U_alt = acc_rep.map(r => (r.wd + r.wh) - (r.ld + r.lh));
+    const W_alt = acc_rep.map(r =>  r.wd + r.wh);
+    const L_alt = acc_rep.map(r =>  r.ld + r.lh);
+
+    const mean_U    = U_alt.reduce((a,b)=>a+b,0) / U_alt.length;
+    const mean_null = U_null.reduce((a,b)=>a+b,0) / U_null.length;
+    const sd_null   = Math.sqrt(U_null.reduce((s,u)=>s+(u-mean_null)**2, 0) / (U_null.length-1));
+
+    // Z vectors
+    const Z_emp = U_alt.map(u => u / sd_null);
+    const Z_an  = U_alt.map((u,i) => u / Math.sqrt(Math.max(W_alt[i]+L_alt[i], 1)));
+
+    const z_alpha = 1.959964;
+    const pwr_emp = Z_emp.filter(z => Math.abs(z) > z_alpha).length / Z_emp.length * 100;
+    const pwr_an  = Z_an.filter(z  => Math.abs(z) > z_alpha).length / Z_an.length  * 100;
+    const ncp     = mean_U / sd_null;
+    const mean_z  = Z_emp.reduce((a,b)=>a+b,0) / Z_emp.length;
+
+    function qnt(arr, p) {
+      const s=[...arr].sort((a,b)=>a-b);
+      const i=(p*(s.length-1));
+      const lo=Math.floor(i), hi=Math.ceil(i);
+      return s[lo]+(s[hi]-s[lo])*(i-lo);
+    }
+    const p25=qnt(Z_emp,0.025), p975=qnt(Z_emp,0.975), med=qnt(Z_emp,0.5);
+
+    // Power display
+    const pwrEl = document.getElementById('fs-power');
+    pwrEl.textContent = pwr_emp.toFixed(1) + '%';
+    pwrEl.className = 'power-num ' + (pwr_emp>=80?'high':pwr_emp>=50?'medium':'low');
+    document.getElementById('fs-power-an').textContent = pwr_an.toFixed(1) + '%';
+    document.getElementById('fs-subtitle').textContent =
+      `α=0.05 two-sided | null replicates=100 | alt replicates=${nSim}`;
+
+    // NCP stats
+    document.getElementById('fs-ncp').textContent    = ncp.toFixed(3);
+    document.getElementById('fs-meanz').textContent  = mean_z.toFixed(3);
+    document.getElementById('fs-sdnull').textContent = sd_null.toFixed(1);
+    document.getElementById('fs-meanu').textContent  = mean_U.toFixed(1);
+
+    // Z bar chart — scale so max bar = 80% width
+    const zmax = Math.max(Math.abs(p25), Math.abs(p975), Math.abs(med), Math.abs(mean_z), 0.01);
+    const scl = v => Math.min(Math.abs(v)/zmax*80, 100);
+    const fmtZ = v => v.toFixed(2);
+    [['zbar-p25',p25],['zbar-med',med],['zbar-p975',p975],['zbar-mean',mean_z]].forEach(([id,v])=>{
+      document.getElementById(id).style.width = scl(v)+'%';
+      document.getElementById(id+'-val').textContent = fmtZ(v);
+    });
+
+    // Z table
+    const rows = [
+      { name:'Analytical (V=W+L)', z:Z_an,  pwr:pwr_an },
+      { name:'Empirical (null sim)', z:Z_emp, pwr:pwr_emp },
+    ];
+    document.getElementById('z-tbody').innerHTML = rows.map(r => `
+      <tr>
+        <td>${r.name}</td>
+        <td class="mono">${(r.z.reduce((a,b)=>a+b,0)/r.z.length).toFixed(3)}</td>
+        <td class="mono">${qnt(r.z,0.5).toFixed(3)}</td>
+        <td class="mono">${Math.sqrt(r.z.reduce((s,v)=>s+(v-(r.z.reduce((a,b)=>a+b,0)/r.z.length))**2,0)/(r.z.length-1)).toFixed(3)}</td>
+        <td class="mono">${qnt(r.z,0.025).toFixed(3)}</td>
+        <td class="mono">${qnt(r.z,0.975).toFixed(3)}</td>
+        <td class="mono" style="color:${r.pwr>=80?'var(--win)':r.pwr>=50?'#facc15':'var(--loss)'}">${r.pwr.toFixed(1)}%</td>
+      </tr>`).join('');
+
+    document.getElementById('power-card').style.display = 'block';
+    document.getElementById('status-msg').textContent =
+      `Done — power=${pwr_emp.toFixed(1)}% (empirical) | ${pwr_an.toFixed(1)}% (analytical) | Z̄=${mean_z.toFixed(2)} | λ=${ncp.toFixed(3)}`;
+  });
+}
+</script>
+</body>
+</html>
